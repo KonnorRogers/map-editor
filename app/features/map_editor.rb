@@ -59,8 +59,6 @@ class MapEditor
 
     @nodesets.each do |nodeset|
       nodeset.type = :nodeset
-      # nodeset.h = Camera::SCREEN_HEIGHT.idiv(4)
-      # nodeset.w = Camera::SCREEN_WIDTH.idiv(4)
     end
 
     @selected_spritesheet_index = 0
@@ -68,6 +66,7 @@ class MapEditor
   end
 
   def tick(args)
+    args.state.buttons ||= []
     load_tiles(args) if args.state.tick_count <= 0
     render_current_spritesheet(args) # if args.state.tick_count <= 0
     render_current_nodeset(args)
@@ -124,25 +123,34 @@ class MapEditor
       tile = tiles.find { |tile| mouse.intersect_rect?(tile) }
 
       if tile
-        @hovered_tile = tile
+        @hovered_sprite = tile
       else
-        @hovered_tile = nil
+        @hovered_sprite = nil
       end
     else
-      @hovered_tile = nil
+      @hovered_sprite = nil
     end
 
-    if mouse.click && @hovered_tile
-      @selected_tile = @hovered_tile.merge({
-        w: @hovered_tile.w.idiv(EDITOR_TILE_SCALE),
-        h: @hovered_tile.h.idiv(EDITOR_TILE_SCALE),
+    if mouse.click && @hovered_sprite
+      selected_sprite = @hovered_sprite.merge({})
+
+      if @selected_sprite && args.inputs.keyboard.shift
+        @selected_sprite = combine_sprites(@selected_sprite, selected_sprite)
+      else
+        @selected_sprite = selected_sprite
+      end
+
+      @selected_sprite.merge!({
+        w: @selected_sprite.source_w,
+        h: @selected_sprite.source_h
       })
     end
 
-    @mouse_world_rect = nil
-    if @selected_tile
-      tile_width = @selected_tile.w
-      tile_height = @selected_tile.h
+
+    if @selected_sprite
+      args.outputs.debug << "#{@selected_sprite.w}, #{@selected_sprite.h}"
+      tile_width = @selected_sprite.w
+      tile_height = @selected_sprite.h
 
       ifloor_x = world_mouse.x.ifloor(tile_width)
       ifloor_y = world_mouse.y.ifloor(tile_height)
@@ -153,22 +161,45 @@ class MapEditor
 
       args.outputs.debug << "y: #{@mouse_world_rect.y}, x: #{@mouse_world_rect.x}"
 
-      @selected_tile.x = @mouse_world_rect.x
-      @selected_tile.y = @mouse_world_rect.y
+      @selected_sprite.x = @mouse_world_rect.x
+      @selected_sprite.y = @mouse_world_rect.y
     end
 
     if @mode == :remove && (mouse.click || (mouse.held && mouse.moved))
-      args.state.tiles.reject! { |t| t.intersect_rect? @mouse_world_rect }
-      save_tiles(args)
+      @should_save = true
+      intersecting_tiles = args.state.geometry.find_all_intersect_rect(@mouse_world_rect, args.state.tiles)
+      intersecting_tiles.each { |t| args.state.tiles.delete(t) }
     elsif @mode == :select
       handle_box_select(args)
-    elsif @selected_tile && (mouse.click || (mouse.held && mouse.moved)) # && !mouse.intersect_rect?(@current_spritesheet)
+    # TODO: Change to "@selected_node"
+    elsif @selected_node && (mouse.click || (mouse.held && mouse.moved)) # && !mouse.intersect_rect?(@current_spritesheet)
       if @mode == :add
-        args.state.tiles.reject! { |t| t.intersect_rect? @selected_tile }
-        args.state.tiles << @selected_tile.copy
-      else
-        args.state.tiles.reject! { |t| t.intersect_rect? @selected_tile }
+        @should_save = true
+        intersecting_tiles = args.state.geometry.find_all_intersect_rect(@mouse_world_rect, args.state.tiles)
+        intersecting_tiles.each { |t| args.state.tiles.delete(t) }
+        args.state.tiles << @selected_node.copy
       end
+    end
+
+    if @selected_sprite && (mouse.click || (mouse.held && mouse.moved)) && mouse.intersect_rect?(@current_nodeset)
+      mouse_x = (args.inputs.mouse.x - @current_nodeset.x)
+      mouse_y = (args.inputs.mouse.y - @current_nodeset.y)
+      w = @selected_sprite.source_w * EDITOR_TILE_SCALE
+      h = @selected_sprite.source_h * EDITOR_TILE_SCALE
+      x = mouse_x.ifloor(w)
+      y = mouse_y.ifloor(h)
+
+      # Need to work on positioning logic to move it all the way right / left
+      new_sprite = @selected_sprite.merge({x: x, y: y, w: @selected_sprite.w * EDITOR_TILE_SCALE, h: @selected_sprite.h * EDITOR_TILE_SCALE})
+
+      intersecting_tiles = args.geometry.find_all_intersect_rect(new_sprite, @current_nodeset.tiles)
+      intersecting_tiles.each { |tile| @current_nodeset.tiles.delete(tile) }
+      @current_nodeset.tiles << new_sprite
+    end
+
+    # Purposely delay saving until `mouse.up` because other wise the editor lags a lot.
+    if mouse.up && @should_save
+      @should_save = false
       save_tiles(args)
     end
   end
@@ -191,26 +222,26 @@ class MapEditor
     if args.inputs.keyboard.key_down.n
       @selected_nodeset_index += 1
 
-      if @selected_nodeset_index > @nodesets.length
+      if @selected_nodeset_index > @nodesets.length - 1
         @selected_nodeset_index = 0
       end
     end
 
     if args.inputs.keyboard.x
       @mode = :remove
-      @selected_tile = nil
+      @selected_sprite = nil
     end
 
     if args.inputs.keyboard.s
       @mode = :select
-      @selected_tile = nil
+      @selected_sprite = nil
     end
 
     if args.inputs.keyboard.a
       @mode = :add
     end
 
-    if args.inputs.mouse.click && @hovered_tile
+    if args.inputs.mouse.click && @hovered_sprite
       @mode = :add
     end
   end
@@ -225,11 +256,11 @@ class MapEditor
 
     scene_sprites = []
 
-    if @hovered_tile
-      sprites << @hovered_tile.merge({ x: @hovered_tile.x,
-                           y: @hovered_tile.y,
-                           w: @hovered_tile.w,
-                           h: @hovered_tile.h,
+    if @hovered_sprite
+      sprites << @hovered_sprite.merge({ x: @hovered_sprite.x,
+                           y: @hovered_sprite.y,
+                           w: @hovered_sprite.w,
+                           h: @hovered_sprite.h,
                            path: :pixel,
                            r: 255, g: 0, b: 0, a: 128 })
     end
@@ -242,13 +273,39 @@ class MapEditor
       end
     end
 
-    if @selected_tile
-      scene_sprites << (Camera.to_screen_space(state.camera, @selected_tile))
-      scene_sprites << (Camera.to_screen_space(state.camera, @selected_tile)).merge(path: :pixel, r: 0, g: 255, b: 255, a: 64)
+    if @selected_sprite
+      sheet_id = "__sheet__#{@current_nodeset.id}"
+
+      mouse_x = (args.inputs.mouse.x - @current_nodeset.x)
+      mouse_y = (args.inputs.mouse.y - @current_nodeset.y)
+      w = @selected_sprite.w * EDITOR_TILE_SCALE
+      h = @selected_sprite.h * EDITOR_TILE_SCALE
+      x = mouse_x.ifloor(w)
+      y = mouse_y.ifloor(h)
+
+      tile_mouse = {
+        w: 1,
+        h: 1,
+        x: x + w,
+        y: y + h,
+      }
+
+      if !tile_mouse.intersect_rect?(@current_nodeset)
+        scene_sprites << (Camera.to_screen_space(state.camera, @selected_sprite))
+        scene_sprites << (Camera.to_screen_space(state.camera, @selected_sprite)).merge(path: :pixel, r: 255, g: 0, b: 0, a: 64)
+      end
+
+      outputs[sheet_id].sprites << @selected_sprite.merge({ x: x, y: y, w: w, h: h })
+      outputs[sheet_id].sprites << @selected_sprite.merge(path: :pixel, r: 0, g: 255, b: 255, a: 64)
     end
 
-    outputs.sprites << sprites
+    args.outputs.debug << "nodeset tiles: #{@current_nodeset.tiles.length}"
+
+    outputs.sprites << [sprites, args.state.buttons]
     outputs[:scene].sprites << scene_sprites
+    # args.outputs.debug << "#{@current_nodeset}"
+    # outputs[@current_nodeset.id] << @selected_sprite
+
   end
 
   def handle_box_select(args)
@@ -360,21 +417,21 @@ class MapEditor
 
   def fill_tiles(args)
     return if @select_rect.nil?
-    return if @selected_tile.nil?
+    return if @selected_sprite.nil?
 
     select_rect = select_rect_to_tiles(args)
-    columns = select_rect.w.idiv(@selected_tile.w).floor
-    rows = select_rect.h.idiv(@selected_tile.h).floor
+    columns = select_rect.w.idiv(@selected_sprite.w).floor
+    rows = select_rect.h.idiv(@selected_sprite.h).floor
 
     remove_tiles(args, select_rect)
 
     columns.times do |col|
       rows.times do |row|
-        args.state.tiles << @selected_tile.merge({
-          x: select_rect.x + (col * @selected_tile.w),
-          y: select_rect.y + (row * @selected_tile.h),
-          w: @selected_tile.w,
-          h: @selected_tile.h
+        args.state.tiles << @selected_sprite.merge({
+          x: select_rect.x + (col * @selected_sprite.w),
+          y: select_rect.y + (row * @selected_sprite.h),
+          w: @selected_sprite.w,
+          h: @selected_sprite.h
         })
       end
     end
@@ -493,16 +550,34 @@ class MapEditor
   def render_current_nodeset(args)
     @current_nodeset = @nodesets[@selected_nodeset_index]
     args.outputs.debug << "#{@current_nodeset}"
+    args.outputs.debug << "direction: #{@direction}"
     render_sheet(@current_nodeset, args)
+    text = "Create +"
+    # button = create_button(args,
+    #             id: :create_nodeset,
+    #             text: text,
+    #             background: { r: 220, g: 220, b: 220, a: 255 },
+    #           )
+    # args.state.buttons << {
+    #   id: :create_nodeset,
+    #   x: @current_nodeset.x + @current_nodeset.w - button[:w],
+    #   y: @current_nodeset.y + @current_nodeset.h + 8,
+    #   w: button[:w],
+    #   h: button[:h],
+    #   path: :create_nodeset
+    # }
   end
 
   def create_nodeset
+    # columns always needs to be odd.
+    columns = 11
+    rows = 6
     @nodesets << {
       name: "nodeset__#{@nodesets.length + 1}",
       id: "nodeset__#{@nodesets.length + 1}",
       type: :nodeset,
-      h: 200,
-      w: 320 + 32,
+      h: rows * 32,
+      w: columns * 32,
       x: 20,
       y: 20,
       tiles: []
@@ -515,5 +590,106 @@ class MapEditor
   end
 
   def delete_nodeset
+  end
+
+  # This method is for merging 2 sprites when a sprite > 16px.
+  # Used for shift+click sprites.
+  def combine_sprites(current_sprite, new_sprite)
+    hash = {}
+
+    # Find the direction, left / right or up / down
+    # y_range = ((current_sprite.source_y)..(current_sprite.source_y + current_sprite.source_h))
+    # x_range = ((current_sprite.source_x)..(current_sprite.source_x + current_sprite.source_w))
+
+    # if is_horizontal
+
+    # end
+
+    if new_sprite.source_y > current_sprite.source_y
+      # @direction = :up
+      hash[:source_y] = current_sprite.source_y
+      hash[:source_h] = (new_sprite.source_y - current_sprite.source_y + new_sprite.source_h)
+    elsif current_sprite.source_y > new_sprite.source_y
+      # @direction = :down
+      hash[:source_y] = current_sprite.source_y - new_sprite.source_h
+      hash[:source_h] = current_sprite.source_h + new_sprite.source_h
+    elsif new_sprite.source_x > current_sprite.source_x
+      # @direction = :right
+      hash[:source_x] = current_sprite.source_x
+      hash[:source_w] = (new_sprite.source_x - current_sprite.source_x + new_sprite.source_w)
+    elsif current_sprite.source_x > new_sprite.source_x
+      # @direction = :left
+      hash[:source_x] = current_sprite.source_x - new_sprite.source_w
+      hash[:source_w] = current_sprite.source_w + new_sprite.source_w
+    end
+
+    @direction = hash
+
+    # @direction = {
+    #   x1: current_sprite.source_x,
+    #   x2: new_sprite.source_x,
+    #   y1: current_sprite.source_y,
+    #   y2: new_sprite.source_y,
+    #   w1: current_sprite.w,
+    #   w2: new_sprite.source_w,
+    #   h1: current_sprite.h,
+    #   h2: new_sprite.source_h,
+    # }
+    @direction = new_sprite.merge(
+      current_sprite,
+    ).merge(
+      hash
+    )
+
+  end
+
+  def create_button(args, id:, text:, w: nil, h: nil, border_width: 1,
+    background: {r: 0, g: 0, b: 0, a: 0},
+    padding: {
+      top: 8,
+      left: 8,
+      bottom: 8,
+      right: 8,
+    }
+  )
+    # render_targets only need to be created once, we use the the id to determine if the texture
+    # has already been created
+    args.state.created_buttons ||= {}
+    return args.state.created_buttons[id] if args.state.created_buttons[id]
+
+    if w.nil? && h.nil?
+      w, h = $gtk.calcstringbox(text)
+    end
+
+    # original_w = w
+    original_h = h.round
+    w = (w + padding[:left] + padding[:right]).round
+    h = (h + padding[:top] + padding[:bottom]).round
+
+    # if the render_target hasn't been created, then generate it and store it in the created_buttons cache
+    button = { created_at: Kernel.tick_count, id: id, w: w, h: h, text: text }
+    args.state.created_buttons[id] = button
+
+    # define the w/h of the texture
+    args.outputs[id].w = w
+    args.outputs[id].h = h
+
+    border_width = border_width.round
+    border_width_half = border_width.idiv(2)
+    args.outputs[id].sprites << { x: border_width_half, y: border_width_half, w: w - border_width_half, h: h - border_width_half, **background, path: :pixel }
+
+    # create a border
+    args.outputs[id].borders << { x: 0, y: 0, w: w, h: h }
+
+    # create a label centered vertically and horizontally within the texture
+    args.outputs[id].labels << {
+      x: 0 + padding[:left],
+      y: original_h + padding[:bottom],
+      text: text,
+      # vertical_alignment_enum: 1,
+      # alignment_enum: 1
+    }
+
+    args.state.created_buttons[id]
   end
 end
