@@ -172,7 +172,7 @@ class MapEditor
     elsif @mode == :select
       handle_box_select(args)
     # TODO: Change to "@selected_node"
-    elsif @selected_node && (mouse.click || (mouse.held && mouse.moved)) # && !mouse.intersect_rect?(@current_spritesheet)
+    elsif @selected_node && (mouse.click || (mouse.held && mouse.moved)) && !mouse.intersect_rect?(@current_spritesheet)
       if @mode == :add
         @should_save = true
         intersecting_tiles = args.state.geometry.find_all_intersect_rect(@mouse_world_rect, args.state.tiles)
@@ -182,15 +182,7 @@ class MapEditor
     end
 
     if @selected_sprite && (mouse.click || (mouse.held && mouse.moved)) && mouse.intersect_rect?(@current_nodeset)
-      mouse_x = (args.inputs.mouse.x - @current_nodeset.x)
-      mouse_y = (args.inputs.mouse.y - @current_nodeset.y)
-      w = @selected_sprite.source_w * EDITOR_TILE_SCALE
-      h = @selected_sprite.source_h * EDITOR_TILE_SCALE
-      x = mouse_x.ifloor(w)
-      y = mouse_y.ifloor(h)
-
-      # Need to work on positioning logic to move it all the way right / left
-      new_sprite = @selected_sprite.merge({x: x, y: y, w: @selected_sprite.w * EDITOR_TILE_SCALE, h: @selected_sprite.h * EDITOR_TILE_SCALE})
+      new_sprite = sprite_to_nodeset_rect(mouse, @selected_sprite, @current_nodeset)
 
       intersecting_tiles = args.geometry.find_all_intersect_rect(new_sprite, @current_nodeset.tiles)
       intersecting_tiles.each { |tile| @current_nodeset.tiles.delete(tile) }
@@ -276,27 +268,14 @@ class MapEditor
     if @selected_sprite
       sheet_id = "__sheet__#{@current_nodeset.id}"
 
-      mouse_x = (args.inputs.mouse.x - @current_nodeset.x)
-      mouse_y = (args.inputs.mouse.y - @current_nodeset.y)
-      w = @selected_sprite.w * EDITOR_TILE_SCALE
-      h = @selected_sprite.h * EDITOR_TILE_SCALE
-      x = mouse_x.ifloor(w)
-      y = mouse_y.ifloor(h)
-
-      tile_mouse = {
-        w: 1,
-        h: 1,
-        x: x + w,
-        y: y + h,
-      }
-
-      if !tile_mouse.intersect_rect?(@current_nodeset)
+      if !args.inputs.mouse.intersect_rect?(@current_nodeset)
         scene_sprites << (Camera.to_screen_space(state.camera, @selected_sprite))
         scene_sprites << (Camera.to_screen_space(state.camera, @selected_sprite)).merge(path: :pixel, r: 255, g: 0, b: 0, a: 64)
+      else
+        sprite = sprite_to_nodeset_rect(args.inputs.mouse, @selected_sprite, @current_nodeset)
+        outputs[sheet_id].sprites << sprite
+        outputs[sheet_id].sprites << sprite.merge(path: :pixel, r: 0, g: 255, b: 255, a: 64)
       end
-
-      outputs[sheet_id].sprites << @selected_sprite.merge({ x: x, y: y, w: w, h: h })
-      outputs[sheet_id].sprites << @selected_sprite.merge(path: :pixel, r: 0, g: 255, b: 255, a: 64)
     end
 
     args.outputs.debug << "nodeset tiles: #{@current_nodeset.tiles.length}"
@@ -553,19 +532,47 @@ class MapEditor
     args.outputs.debug << "direction: #{@direction}"
     render_sheet(@current_nodeset, args)
     text = "Create +"
-    # button = create_button(args,
-    #             id: :create_nodeset,
-    #             text: text,
-    #             background: { r: 220, g: 220, b: 220, a: 255 },
-    #           )
-    # args.state.buttons << {
-    #   id: :create_nodeset,
-    #   x: @current_nodeset.x + @current_nodeset.w - button[:w],
-    #   y: @current_nodeset.y + @current_nodeset.h + 8,
-    #   w: button[:w],
-    #   h: button[:h],
-    #   path: :create_nodeset
-    # }
+    add_nodeset_button = create_button(args,
+                id: :add_nodeset_button,
+                text: text,
+                background: { r: 220, g: 220, b: 220, a: 255 },
+              )
+     add_nodeset_button = add_nodeset_button.merge({
+        id: :add_nodeset_button,
+        x: @current_nodeset.x + @current_nodeset.w - add_nodeset_button[:w],
+        y: @current_nodeset.y + @current_nodeset.h + 8,
+        path: :add_nodeset_button
+      })
+    args.state.buttons << add_nodeset_button
+
+    text = ">"
+    next_nodeset_button = create_button(args,
+                id: :next_nodeset_button,
+                text: text,
+                background: { r: 220, g: 220, b: 220, a: 255 },
+              )
+    next_nodeset_button = next_nodeset_button.merge({
+        id: :next_nodeset_button,
+        x: add_nodeset_button.x + (add_nodeset_button.w.idiv(2)) + 8,
+        y: add_nodeset_button.y + add_nodeset_button.h + 8,
+        path: :next_nodeset_button
+    })
+    args.state.buttons << next_nodeset_button
+
+    text = "<"
+    previous_nodeset_button = create_button(args,
+                id: :previous_nodeset_button,
+                text: text,
+                background: { r: 220, g: 220, b: 220, a: 255 },
+              )
+    previous_nodeset_button = previous_nodeset_button.merge({
+        id: :previous_nodeset_button,
+        x: add_nodeset_button.x + (add_nodeset_button.w.idiv(2)) - previous_nodeset_button.w,
+        y: add_nodeset_button.y + add_nodeset_button.h + 8,
+        path: :previous_nodeset_button
+    })
+
+    args.state.buttons << previous_nodeset_button
   end
 
   def create_nodeset
@@ -691,5 +698,24 @@ class MapEditor
     }
 
     args.state.created_buttons[id]
+  end
+
+  def sprite_to_nodeset_rect(mouse, sprite, nodeset)
+      mouse_x = (mouse.x - nodeset.x)
+      mouse_y = (mouse.y - nodeset.y)
+      w = sprite.source_w * EDITOR_TILE_SCALE
+      h = sprite.source_h * EDITOR_TILE_SCALE
+      # prevent overflow right / left
+      x = mouse_x.ifloor(TILE_SIZE * EDITOR_TILE_SCALE).clamp(0, nodeset.w - w)
+
+      # prevent overflow up / down.
+      y = mouse_y.ifloor(TILE_SIZE * EDITOR_TILE_SCALE).clamp(0, nodeset.h - h)
+
+      sprite.merge({
+        x: x,
+        y: y,
+        w: w,
+        h: h,
+      })
   end
 end
