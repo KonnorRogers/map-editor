@@ -91,8 +91,9 @@ class MapEditor
     ]
 
     instructions.each_with_index do |text, index|
+      text_width, _ = $gtk.calcstringbox(text)
       hash = {
-        x: 10,
+        x: 10.from_right - text_width,
         y: 80.from_top,
         text: text
       }
@@ -148,7 +149,7 @@ class MapEditor
 
 
     if @selected_sprite
-      args.outputs.debug << "#{@selected_sprite.w}, #{@selected_sprite.h}"
+      # args.outputs.debug << "#{@selected_sprite.w}, #{@selected_sprite.h}"
       tile_width = @selected_sprite.w
       tile_height = @selected_sprite.h
 
@@ -159,8 +160,7 @@ class MapEditor
                             w: tile_width,
                             h: tile_height }
 
-      args.outputs.debug << "y: #{@mouse_world_rect.y}, x: #{@mouse_world_rect.x}"
-
+      # args.outputs.debug << "y: #{@mouse_world_rect.y}, x: #{@mouse_world_rect.x}"
       @selected_sprite.x = @mouse_world_rect.x
       @selected_sprite.y = @mouse_world_rect.y
     end
@@ -197,7 +197,7 @@ class MapEditor
   end
 
   def switch_mode(args)
-    args.outputs.debug << "#{@selected_spritesheet_index}"
+    # args.outputs.debug << "#{@selected_spritesheet_index}"
 
     if args.state.text_fields.any? { |input| input.focussed? }
       return
@@ -278,7 +278,7 @@ class MapEditor
       end
     end
 
-    args.outputs.debug << "nodeset tiles: #{@current_nodeset.tiles.length}"
+    # args.outputs.debug << "nodeset tiles: #{@current_nodeset.tiles.length}"
 
     outputs.sprites << [sprites, args.state.buttons]
     outputs[:scene].sprites << scene_sprites
@@ -515,8 +515,8 @@ class MapEditor
     _label_width, label_height = $gtk.calcstringbox(sheet.name)
 
     label = {
-      x: sheet_border.x,
-      y: sheet_border.y + sheet_border.h + label_height + 8,
+      x: sheet_border.x + 70,
+      y: sheet_border.y - label_height + 6,
       text: sheet.name
     }
 
@@ -528,36 +528,10 @@ class MapEditor
 
   def render_current_nodeset(args)
     @current_nodeset = @nodesets[@selected_nodeset_index]
-    args.outputs.debug << "#{@current_nodeset}"
-    args.outputs.debug << "direction: #{@direction}"
+    # args.outputs.debug << "#{@current_nodeset}"
+    # args.outputs.debug << "direction: #{@direction}"
     render_sheet(@current_nodeset, args)
-    text = "Create +"
-    add_nodeset_button = create_button(args,
-                id: :add_nodeset_button,
-                text: text,
-                background: { r: 220, g: 220, b: 220, a: 255 },
-              )
-     add_nodeset_button = add_nodeset_button.merge({
-        id: :add_nodeset_button,
-        x: @current_nodeset.x + @current_nodeset.w - add_nodeset_button[:w],
-        y: @current_nodeset.y + @current_nodeset.h + 8,
-        path: :add_nodeset_button
-      })
-    args.state.buttons << add_nodeset_button
 
-    text = ">"
-    next_nodeset_button = create_button(args,
-                id: :next_nodeset_button,
-                text: text,
-                background: { r: 220, g: 220, b: 220, a: 255 },
-              )
-    next_nodeset_button = next_nodeset_button.merge({
-        id: :next_nodeset_button,
-        x: add_nodeset_button.x + (add_nodeset_button.w.idiv(2)) + 8,
-        y: add_nodeset_button.y + add_nodeset_button.h + 8,
-        path: :next_nodeset_button
-    })
-    args.state.buttons << next_nodeset_button
 
     text = "<"
     previous_nodeset_button = create_button(args,
@@ -567,26 +541,56 @@ class MapEditor
               )
     previous_nodeset_button = previous_nodeset_button.merge({
         id: :previous_nodeset_button,
-        x: add_nodeset_button.x + (add_nodeset_button.w.idiv(2)) - previous_nodeset_button.w,
-        y: add_nodeset_button.y + add_nodeset_button.h + 8,
+        x: @current_nodeset.x,
+        y: @current_nodeset.y - previous_nodeset_button.h - 8,
         path: :previous_nodeset_button
     })
 
     args.state.buttons << previous_nodeset_button
+
+    text = ">"
+    next_nodeset_button = create_button(args,
+                id: :next_nodeset_button,
+                text: text,
+                background: { r: 220, g: 220, b: 220, a: 255 },
+              )
+    next_nodeset_button = next_nodeset_button.merge({
+        id: :next_nodeset_button,
+        x: @current_nodeset.x + previous_nodeset_button.w + 4,
+        y: previous_nodeset_button.y,
+        path: :next_nodeset_button
+    })
+    args.state.buttons << next_nodeset_button
+
+    text = "Create +"
+    add_nodeset_button = create_button(args,
+                id: :add_nodeset_button,
+                text: text,
+                background: { r: 220, g: 220, b: 220, a: 255 },
+              )
+     add_nodeset_button = add_nodeset_button.merge({
+        id: :add_nodeset_button,
+        x: @current_nodeset.x + @current_nodeset.w - add_nodeset_button[:w],
+        y: @current_nodeset.y - add_nodeset_button.h - 8,
+        path: :add_nodeset_button
+      })
+    args.state.buttons << add_nodeset_button
   end
 
   def create_nodeset
     # columns always needs to be odd.
     columns = 11
     rows = 6
+    h = rows * TILE_SIZE * EDITOR_TILE_SCALE
+    w = columns * TILE_SIZE * EDITOR_TILE_SCALE
     @nodesets << {
       name: "nodeset__#{@nodesets.length + 1}",
       id: "nodeset__#{@nodesets.length + 1}",
       type: :nodeset,
-      h: rows * 32,
-      w: columns * 32,
+      h: h,
+      w: w,
       x: 20,
-      y: 20,
+      y: 20.from_top - h,
       tiles: []
     }
 
