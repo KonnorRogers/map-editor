@@ -72,7 +72,43 @@ class MapEditor
     render_current_nodeset(args)
     calc(args)
     render(args)
+    handle_nodeset_buttons(args)
+    handle_spritesheet_buttons(args)
     switch_mode(args)
+  end
+
+  def handle_nodeset_buttons(args)
+    mouse = args.inputs.mouse
+    return if !mouse.click
+
+    if mouse.intersect_rect?(@add_nodeset_button)
+      create_nodeset
+    end
+
+    if mouse.intersect_rect?(@previous_nodeset_button)
+      previous_nodeset
+    end
+
+    if mouse.intersect_rect?(@next_nodeset_button)
+      next_nodeset
+    end
+  end
+
+  def handle_spritesheet_buttons(args)
+    mouse = args.inputs.mouse
+    return if !mouse.click
+
+    # if mouse.intersect_rect?(@add_spritesheet_button)
+    #   create_spritesheet
+    # end
+
+    if mouse.intersect_rect?(@previous_spritesheet_button)
+      previous_spritesheet
+    end
+
+    if mouse.intersect_rect?(@next_spritesheet_button)
+      next_spritesheet
+    end
   end
 
   def calc(args)
@@ -147,9 +183,7 @@ class MapEditor
       })
     end
 
-
     if @selected_sprite
-      # args.outputs.debug << "#{@selected_sprite.w}, #{@selected_sprite.h}"
       tile_width = @selected_sprite.w
       tile_height = @selected_sprite.h
 
@@ -163,6 +197,7 @@ class MapEditor
       # args.outputs.debug << "y: #{@mouse_world_rect.y}, x: #{@mouse_world_rect.x}"
       @selected_sprite.x = @mouse_world_rect.x
       @selected_sprite.y = @mouse_world_rect.y
+    else
     end
 
     if @mode == :remove && (mouse.click || (mouse.held && mouse.moved))
@@ -254,7 +289,9 @@ class MapEditor
                            w: @hovered_sprite.w,
                            h: @hovered_sprite.h,
                            path: :pixel,
-                           r: 255, g: 0, b: 0, a: 128 })
+                           r: 0, g: 0, b: 128, a: 64 })
+
+      sprites << create_borders(@hovered_sprite, border_width: 1, color: { r: 0, b: 255, g: 0, a: 255 }).values
     end
 
     if @mode == :remove
@@ -447,7 +484,7 @@ class MapEditor
     @spritesheet_offset_y = 20
 
     @current_spritesheet = @spritesheets[@selected_spritesheet_index]
-    @current_spritesheet = @current_spritesheet.merge({ x: @spritesheet_offset_x.from_right - @current_spritesheet.w, y: @spritesheet_offset_y })
+    @current_spritesheet = @current_spritesheet.merge({ x: @spritesheet_offset_x, y: 80 })
 
     prev_tile = {
       x: 0,
@@ -475,12 +512,56 @@ class MapEditor
       tile.x = prev_tile.x + prev_tile.w
       tile.y = prev_tile.y
       tile.w = tile.source_w * EDITOR_TILE_SCALE
-      tile.h = tile.source_h  * EDITOR_TILE_SCALE
+      tile.h = tile.source_h * EDITOR_TILE_SCALE
 
       prev_tile = tile
     end
 
     render_sheet(@current_spritesheet, args)
+
+    text = "<"
+    @previous_spritesheet_button = create_button(args,
+                id: :previous_spritesheet_button,
+                text: text,
+                background: { r: 220, g: 220, b: 220, a: 255 },
+              )
+    @previous_spritesheet_button = @previous_spritesheet_button.merge({
+        id: :previous_spritesheet_button,
+        x: @current_spritesheet.x,
+        y: @current_spritesheet.y - @previous_spritesheet_button.h - 8,
+        path: :previous_spritesheet_button
+    })
+
+    args.state.buttons << @previous_spritesheet_button
+
+    text = ">"
+    @next_spritesheet_button = create_button(args,
+                id: :next_spritesheet_button,
+                text: text,
+                background: { r: 220, g: 220, b: 220, a: 255 },
+              )
+    @next_spritesheet_button = @next_spritesheet_button.merge({
+        id: :next_spritesheet_button,
+        x: @current_spritesheet.x + @previous_spritesheet_button.w + 4,
+        y: @previous_spritesheet_button.y,
+        path: :next_spritesheet_button
+    })
+    args.state.buttons << @next_spritesheet_button
+
+    # TODO: no way to add spritesheets.
+    # text = "Create +"
+    # @add_spritesheet_button = create_button(args,
+    #             id: :add_spritesheet_button,
+    #             text: text,
+    #             background: { r: 220, g: 220, b: 220, a: 255 },
+    #           )
+    #  @add_spritesheet_button = @add_spritesheet_button.merge({
+    #     id: :add_spritesheet_button,
+    #     x: @current_spritesheet.x + @current_spritesheet.w - @add_spritesheet_button[:w],
+    #     y: @current_spritesheet.y - @add_spritesheet_button.h - 8,
+    #     path: :add_spritesheet_button
+    #   })
+    # args.state.buttons << @add_spritesheet_button
   end
 
   def render_sheet(sheet, args)
@@ -516,7 +597,7 @@ class MapEditor
 
     label = {
       x: sheet_border.x + 70,
-      y: sheet_border.y - label_height + 6,
+      y: sheet_border.y - label_height + 8,
       text: sheet.name
     }
 
@@ -534,47 +615,47 @@ class MapEditor
 
 
     text = "<"
-    previous_nodeset_button = create_button(args,
+    @previous_nodeset_button = create_button(args,
                 id: :previous_nodeset_button,
                 text: text,
                 background: { r: 220, g: 220, b: 220, a: 255 },
               )
-    previous_nodeset_button = previous_nodeset_button.merge({
+    @previous_nodeset_button = @previous_nodeset_button.merge({
         id: :previous_nodeset_button,
         x: @current_nodeset.x,
-        y: @current_nodeset.y - previous_nodeset_button.h - 8,
+        y: @current_nodeset.y - @previous_nodeset_button.h - 8,
         path: :previous_nodeset_button
     })
 
-    args.state.buttons << previous_nodeset_button
+    args.state.buttons << @previous_nodeset_button
 
     text = ">"
-    next_nodeset_button = create_button(args,
+    @next_nodeset_button = create_button(args,
                 id: :next_nodeset_button,
                 text: text,
                 background: { r: 220, g: 220, b: 220, a: 255 },
               )
-    next_nodeset_button = next_nodeset_button.merge({
+    @next_nodeset_button = @next_nodeset_button.merge({
         id: :next_nodeset_button,
-        x: @current_nodeset.x + previous_nodeset_button.w + 4,
-        y: previous_nodeset_button.y,
+        x: @current_nodeset.x + @previous_nodeset_button.w + 4,
+        y: @previous_nodeset_button.y,
         path: :next_nodeset_button
     })
-    args.state.buttons << next_nodeset_button
+    args.state.buttons << @next_nodeset_button
 
     text = "Create +"
-    add_nodeset_button = create_button(args,
+    @add_nodeset_button = create_button(args,
                 id: :add_nodeset_button,
                 text: text,
                 background: { r: 220, g: 220, b: 220, a: 255 },
               )
-     add_nodeset_button = add_nodeset_button.merge({
+     @add_nodeset_button = @add_nodeset_button.merge({
         id: :add_nodeset_button,
-        x: @current_nodeset.x + @current_nodeset.w - add_nodeset_button[:w],
-        y: @current_nodeset.y - add_nodeset_button.h - 8,
+        x: @current_nodeset.x + @current_nodeset.w - @add_nodeset_button[:w],
+        y: @current_nodeset.y - @add_nodeset_button.h - 8,
         path: :add_nodeset_button
       })
-    args.state.buttons << add_nodeset_button
+    args.state.buttons << @add_nodeset_button
   end
 
   def create_nodeset
@@ -594,6 +675,8 @@ class MapEditor
       tiles: []
     }
 
+    @selected_nodeset_index = @nodesets.length - 1
+    @current_nodeset = @nodesets[@selected_nodeset_index]
     save_nodesets
   end
 
@@ -601,6 +684,42 @@ class MapEditor
   end
 
   def delete_nodeset
+  end
+
+  def next_nodeset
+    idx = @selected_nodeset_index + 1
+
+    idx = 0 if idx > @nodesets.length - 1
+
+    @selected_nodeset_index = idx
+    @current_nodeset = @nodesets[@selected_nodeset_index]
+  end
+
+  def previous_nodeset
+    idx = @selected_nodeset_index - 1
+
+    idx = @nodesets.length - 1 if idx < 0
+
+    @selected_nodeset_index = idx
+    @current_nodeset = @nodesets[@selected_nodeset_index]
+  end
+
+  def next_spritesheet
+    idx = @selected_spritesheet_index + 1
+
+    idx = 0 if idx > @spritesheets.length - 1
+
+    @selected_spritesheet_index = idx
+    @current_spritesheet = @spritesheets[@selected_spritesheet_index]
+  end
+
+  def previous_spritesheet
+    idx = @selected_spritesheet_index - 1
+
+    idx = @spritesheets.length - 1 if idx < 0
+
+    @selected_spritesheet_index = idx
+    @current_spritesheet = @spritesheets[@selected_spritesheet_index]
   end
 
   # This method is for merging 2 sprites when a sprite > 16px.
@@ -721,5 +840,42 @@ class MapEditor
         w: w,
         h: h,
       })
+  end
+
+  def create_borders(rect, border_width: 1, color: { r: 0, b: 0, g: 0, a: 255 })
+      {
+        top: {
+          # top
+          x: rect.x,
+          w: rect.w + border_width,
+          y: rect.y + rect.h,
+          h: border_width,
+          **color,
+        },
+        right: {
+          # right
+          x: rect.x + rect.w,
+          w: border_width,
+          y: rect.y,
+          h: rect.h,
+          **color,
+        },
+        bottom: {
+          # bottom
+          x: rect.x,
+          w: rect.w + border_width,
+          y: rect.y,
+          h: border_width,
+          **color,
+        },
+        left: {
+          # left
+          x: rect.x,
+          w: border_width,
+          y: rect.y,
+          h: rect.h,
+          **color,
+        }
+      }
   end
 end
