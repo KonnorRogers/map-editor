@@ -70,11 +70,33 @@ class MapEditor
     load_tiles(args) if args.state.tick_count <= 0
     render_current_spritesheet(args) # if args.state.tick_count <= 0
     render_current_nodeset(args)
+    render_screen_boxes(args)
     calc(args)
     render(args)
     handle_nodeset_buttons(args)
     handle_spritesheet_buttons(args)
     switch_mode(args)
+  end
+
+  def render_screen_boxes(args)
+    if Kernel.tick_count == 0
+      args.outputs[:grid].w = 1280
+      args.outputs[:grid].h = 1280
+      args.outputs[:grid].background_color = [0, 0, 0, 0]
+      args.outputs[:grid].borders << 80.map do |x|
+        80.map do |y|
+          { x: x * 16, y: y * 16, w: 16, h: 16, r: 64, g: 64, b: 64 }
+        end
+      end
+    end
+
+    args.state.grid_boxes ||= 10.flat_map do |x|
+      10.map do |y|
+        { x: (x - 5) * 1280, y: (y - 5) * 1280, w: 1280, h: 1280, path: :grid }
+      end
+    end
+
+    args.outputs[:scene].primitives << args.state.grid_boxes.map { |rect| Camera.to_screen_space(args.state.camera, rect) }
   end
 
   def handle_nodeset_buttons(args)
@@ -159,11 +181,7 @@ class MapEditor
 
       tile = tiles.find { |tile| mouse.intersect_rect?(tile) }
 
-      if tile
-        @hovered_sprite = tile
-      else
-        @hovered_sprite = nil
-      end
+      @hovered_sprite = tile
     else
       @hovered_sprite = nil
     end
@@ -183,22 +201,24 @@ class MapEditor
       })
     end
 
+    tile_width = TILE_SIZE
+    tile_height = TILE_SIZE
     if @selected_sprite
       tile_width = @selected_sprite.w
       tile_height = @selected_sprite.h
 
-      ifloor_x = world_mouse.x.ifloor(tile_width)
-      ifloor_y = world_mouse.y.ifloor(tile_height)
-      @mouse_world_rect = { x: ifloor_x,
-                            y: ifloor_y,
-                            w: tile_width,
-                            h: tile_height }
-
       # args.outputs.debug << "y: #{@mouse_world_rect.y}, x: #{@mouse_world_rect.x}"
       @selected_sprite.x = @mouse_world_rect.x
       @selected_sprite.y = @mouse_world_rect.y
-    else
     end
+
+    ifloor_x = world_mouse.x.ifloor(tile_width)
+    ifloor_y = world_mouse.y.ifloor(tile_height)
+
+    @mouse_world_rect = { x: ifloor_x,
+                          y: ifloor_y,
+                          w: tile_width,
+                          h: tile_height }
 
     if @mode == :remove && (mouse.click || (mouse.held && mouse.moved))
       @should_save = true
@@ -291,7 +311,8 @@ class MapEditor
                            path: :pixel,
                            r: 0, g: 0, b: 128, a: 64 })
 
-      sprites << create_borders(@hovered_sprite, border_width: 1, color: { r: 0, b: 255, g: 0, a: 255 }).values
+      sprites << create_borders(@hovered_sprite, border_width: 2, color: { r: 0, b: 255, g: 0, a: 255 }).values
+
     end
 
     if @mode == :remove
@@ -311,16 +332,16 @@ class MapEditor
       else
         sprite = sprite_to_nodeset_rect(args.inputs.mouse, @selected_sprite, @current_nodeset)
         outputs[sheet_id].sprites << sprite
-        outputs[sheet_id].sprites << sprite.merge(path: :pixel, r: 0, g: 255, b: 255, a: 64)
+        outputs[sheet_id].sprites << sprite.merge(path: :pixel, r: 0, g: 255, b: 0, a: 30)
+        outputs[sheet_id].sprites << create_borders(sprite, border_width: 2, color: { r: 0, g: 100, b: 0, a: 255 }).values
       end
+
     end
 
     # args.outputs.debug << "nodeset tiles: #{@current_nodeset.tiles.length}"
 
     outputs.sprites << [sprites, args.state.buttons]
     outputs[:scene].sprites << scene_sprites
-    # args.outputs.debug << "#{@current_nodeset}"
-    # outputs[@current_nodeset.id] << @selected_sprite
 
   end
 
@@ -562,6 +583,25 @@ class MapEditor
     #     path: :add_spritesheet_button
     #   })
     # args.state.buttons << @add_spritesheet_button
+
+    if @selected_sprite
+      rect = {
+        x: @current_spritesheet.x + (@selected_sprite.source_x * EDITOR_TILE_SCALE),
+        y: @current_spritesheet.y + (@selected_sprite.source_y * EDITOR_TILE_SCALE),
+        h: @selected_sprite.source_h * EDITOR_TILE_SCALE,
+        w: @selected_sprite.source_w * EDITOR_TILE_SCALE,
+        r: 0,
+        b: 0,
+        g: 0,
+        a: 55,
+        primitive_marker: :sprite
+      }
+      args.outputs.debug << "#{rect}"
+
+
+      args.outputs.sprites << rect
+      args.outputs.sprites << create_borders(rect, border_width: 2, color: { r: 0, g: 0, b: 0, a: 200 }).values
+    end
   end
 
   def render_sheet(sheet, args)
@@ -847,14 +887,14 @@ class MapEditor
         top: {
           # top
           x: rect.x,
-          w: rect.w + border_width,
+          w: rect.w,
           y: rect.y + rect.h,
           h: border_width,
           **color,
         },
         right: {
           # right
-          x: rect.x + rect.w,
+          x: rect.x + rect.w - border_width,
           w: border_width,
           y: rect.y,
           h: rect.h,
@@ -863,7 +903,7 @@ class MapEditor
         bottom: {
           # bottom
           x: rect.x,
-          w: rect.w + border_width,
+          w: rect.w,
           y: rect.y,
           h: border_width,
           **color,
@@ -876,6 +916,6 @@ class MapEditor
           h: rect.h,
           **color,
         }
-      }
+      }.each_value { |hash| hash[:primitive_marker] = :sprite }
   end
 end
