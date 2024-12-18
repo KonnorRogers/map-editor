@@ -12,6 +12,9 @@ class MapEditor
     # @type [:add, :select, :remove]
     @mode = :add
 
+    # @type [Boolean]
+    @show_grid = false
+
     @nodesets_file = ""
 
     @water_spritesheet = Tilesheets::Loader.load_tiles(
@@ -67,10 +70,10 @@ class MapEditor
 
   def tick(args)
     args.state.buttons ||= []
+    render_screen_boxes(args)
     load_tiles(args) if args.state.tick_count <= 0
     render_current_spritesheet(args) # if args.state.tick_count <= 0
     render_current_nodeset(args)
-    render_screen_boxes(args)
     calc(args)
     render(args)
     handle_nodeset_buttons(args)
@@ -79,15 +82,48 @@ class MapEditor
   end
 
   def render_screen_boxes(args)
+    grid_border_size = 2
+    width = 1280
+    height = 1280
     if Kernel.tick_count == 0
-      args.outputs[:grid].w = 1280
-      args.outputs[:grid].h = 1280
+      args.outputs[:grid].w = width
+      args.outputs[:grid].h = height
       args.outputs[:grid].background_color = [0, 0, 0, 0]
-      args.outputs[:grid].borders << 80.map do |x|
-        80.map do |y|
-          { x: x * 16, y: y * 16, w: 16, h: 16, r: 64, g: 64, b: 64 }
+      @grid = []
+      height.idiv(16).each do |x|
+        width.idiv(16).each do |y|
+          @grid << { line_type: :horizontal, x: x * TILE_SIZE, y: y * TILE_SIZE, w: TILE_SIZE, h: grid_border_size, r: 200, g: 200, b: 200, a: 255, primitive_marker: :sprite, path: :pixel }
+          @grid << { line_type: :vertical, x: x * TILE_SIZE, y: y * TILE_SIZE, w: grid_border_size, h: TILE_SIZE, r: 200, g: 200, b: 200, a: 255, primitive_marker: :sprite, path: :pixel }
         end
       end
+    end
+
+    if !@show_grid
+      args.outputs[:grid].sprites.clear
+      return
+    end
+
+    if args.state.camera && args.state.camera.scale != @current_scale
+      @current_scale = args.state.camera.scale
+      # if args.state.camera.scale <= 0.5
+      #   args.outputs[:grid].sprites.clear
+      #   return
+      # end
+
+      if args.state.camera.scale < 1
+        border_size = (grid_border_size / args.state.camera.scale).ceil
+      else
+        border_size = grid_border_size
+      end
+
+      @grid.each do |line|
+        line.w = border_size if line[:line_type] == :vertical
+        line.h = border_size if line[:line_type] == :horizontal
+      end
+
+      # Update the grid with new widths.
+      args.outputs[:grid].sprites.clear
+      args.outputs[:grid].sprites << @grid
     end
 
     args.state.grid_boxes ||= 10.flat_map do |x|
@@ -96,7 +132,9 @@ class MapEditor
       end
     end
 
-    args.outputs[:scene].primitives << args.state.grid_boxes.map { |rect| Camera.to_screen_space(args.state.camera, rect) }
+    args.outputs[:scene].sprites << args.state.grid_boxes.map do |rect|
+      Camera.to_screen_space(args.state.camera, rect)
+    end
   end
 
   def handle_nodeset_buttons(args)
@@ -136,8 +174,27 @@ class MapEditor
   def calc(args)
     inputs = args.inputs
     mouse = inputs.mouse
-
     state = args.state
+
+    tile_width = TILE_SIZE
+    tile_height = TILE_SIZE
+
+    if @selected_sprite
+      # args.outputs.debug << "y: #{@mouse_world_rect.y}, x: #{@mouse_world_rect.x}"
+      @selected_sprite.x = @mouse_world_rect.x
+      @selected_sprite.y = @mouse_world_rect.y
+    end
+
+    world_mouse = Camera.to_world_space state.camera, inputs.mouse
+
+    ifloor_x = world_mouse.x.ifloor(tile_width)
+    ifloor_y = world_mouse.y.ifloor(tile_height)
+
+    @mouse_world_rect = { x: ifloor_x,
+                          y: ifloor_y,
+                          w: tile_width,
+                          h: tile_height }
+
 
     instructions = [
       "r to refresh.",
@@ -167,8 +224,6 @@ class MapEditor
 
     args.outputs.labels << instructions
 
-    world_mouse = Camera.to_world_space state.camera, inputs.mouse
-
     if mouse.intersect_rect? @current_spritesheet
       tiles = @current_spritesheet.tiles.map do |current_tile|
         current_tile.merge({
@@ -186,39 +241,45 @@ class MapEditor
       @hovered_sprite = nil
     end
 
-    if mouse.click && @hovered_sprite
+    if @hovered_sprite
+      # make a new sprite.
       selected_sprite = @hovered_sprite.merge({})
 
-      if @selected_sprite && args.inputs.keyboard.shift
-        @selected_sprite = combine_sprites(@selected_sprite, selected_sprite)
-      else
-        @selected_sprite = selected_sprite
+      if mouse.click
+        if @selected_sprite && args.inputs.keyboard.shift
+          @selected_sprite = combine_sprites(@selected_sprite, selected_sprite)
+        else
+          @selected_sprite = selected_sprite
+        end
+
+        @selected_sprite.merge!({
+          w: @selected_sprite.source_w,
+          h: @selected_sprite.source_h
+        })
+      elsif args.inputs.keyboard.shift && @selected_sprite && @current_spritesheet
+        sprites = []
+        sprite = combine_sprites(@selected_sprite, selected_sprite)
+        sprite = {
+          w: sprite.source_w * EDITOR_TILE_SCALE,
+          h: sprite.source_h * EDITOR_TILE_SCALE,
+          x: sprite.source_x * EDITOR_TILE_SCALE,
+          y: sprite.source_y * EDITOR_TILE_SCALE,
+          r: 200, g: 200, b: 200, a: 128,
+          path: :pixel,
+        }
+
+        # sprite = sprite_to_nodeset_rect(mouse, sprite, @current_spritesheet)
+        sprites << sprite
+        sprites << create_borders(sprite, border_width: 2, color: { r: 100, b: 100, g: 100, a: 255 }).values
+
+        sheet_id = "__sheet__#{@current_spritesheet.id}"
+
+        args.outputs[sheet_id].sprites << sprites
       end
-
-      @selected_sprite.merge!({
-        w: @selected_sprite.source_w,
-        h: @selected_sprite.source_h
-      })
     end
 
-    tile_width = TILE_SIZE
-    tile_height = TILE_SIZE
-    if @selected_sprite
-      tile_width = @selected_sprite.w
-      tile_height = @selected_sprite.h
-
-      # args.outputs.debug << "y: #{@mouse_world_rect.y}, x: #{@mouse_world_rect.x}"
-      @selected_sprite.x = @mouse_world_rect.x
-      @selected_sprite.y = @mouse_world_rect.y
-    end
-
-    ifloor_x = world_mouse.x.ifloor(tile_width)
-    ifloor_y = world_mouse.y.ifloor(tile_height)
-
-    @mouse_world_rect = { x: ifloor_x,
-                          y: ifloor_y,
-                          w: tile_width,
-                          h: tile_height }
+    # Must come before "@mode" changes
+    calc_nodes(args)
 
     if @mode == :remove && (mouse.click || (mouse.held && mouse.moved))
       @should_save = true
@@ -234,14 +295,6 @@ class MapEditor
         intersecting_tiles.each { |t| args.state.tiles.delete(t) }
         args.state.tiles << @selected_node.copy
       end
-    end
-
-    if @selected_sprite && (mouse.click || (mouse.held && mouse.moved)) && mouse.intersect_rect?(@current_nodeset)
-      new_sprite = sprite_to_nodeset_rect(mouse, @selected_sprite, @current_nodeset)
-
-      intersecting_tiles = args.geometry.find_all_intersect_rect(new_sprite, @current_nodeset.tiles)
-      intersecting_tiles.each { |tile| @current_nodeset.tiles.delete(tile) }
-      @current_nodeset.tiles << new_sprite
     end
 
     # Purposely delay saving until `mouse.up` because other wise the editor lags a lot.
@@ -264,6 +317,7 @@ class MapEditor
       if @selected_spritesheet_index > @spritesheets.length - 1
         @selected_spritesheet_index = 0
       end
+      @selected_sprite = nil
     end
 
     if args.inputs.keyboard.key_down.n
@@ -277,11 +331,13 @@ class MapEditor
     if args.inputs.keyboard.x
       @mode = :remove
       @selected_sprite = nil
+      @selected_node = nil
     end
 
     if args.inputs.keyboard.s
       @mode = :select
       @selected_sprite = nil
+      @selected_node = nil
     end
 
     if args.inputs.keyboard.a
@@ -290,6 +346,16 @@ class MapEditor
 
     if args.inputs.mouse.click && @hovered_sprite
       @mode = :add
+    end
+
+    if args.inputs.keyboard.key_down.g
+      @show_grid = !@show_grid
+    end
+
+    if args.inputs.keyboard.key_down.escape
+      @selected_sprite = nil
+      @selected_node = nil
+      @select_rect = nil
     end
   end
 
@@ -303,16 +369,14 @@ class MapEditor
 
     scene_sprites = []
 
+
     if @hovered_sprite
-      sprites << @hovered_sprite.merge({ x: @hovered_sprite.x,
-                           y: @hovered_sprite.y,
-                           w: @hovered_sprite.w,
-                           h: @hovered_sprite.h,
+      sprites << @hovered_sprite.merge({
                            path: :pixel,
-                           r: 0, g: 0, b: 128, a: 64 })
+                           r: 0, g: 0, b: 128, a: 64
+                 })
 
       sprites << create_borders(@hovered_sprite, border_width: 2, color: { r: 0, b: 255, g: 0, a: 255 }).values
-
     end
 
     if @mode == :remove
@@ -433,7 +497,7 @@ class MapEditor
     args.outputs.borders << @select_rect.merge({
       r: 0,
       g: 0,
-      b: 0,
+      b: 255,
       a: alpha,
       primitive_marker: :border
     })
@@ -454,21 +518,21 @@ class MapEditor
 
   def fill_tiles(args)
     return if @select_rect.nil?
-    return if @selected_sprite.nil?
+    return if @selected_node.nil?
 
     select_rect = select_rect_to_tiles(args)
-    columns = select_rect.w.idiv(@selected_sprite.w).floor
-    rows = select_rect.h.idiv(@selected_sprite.h).floor
+    columns = select_rect.w.idiv(@selected_node.w).floor
+    rows = select_rect.h.idiv(@selected_node.h).floor
 
     remove_tiles(args, select_rect)
 
     columns.times do |col|
       rows.times do |row|
-        args.state.tiles << @selected_sprite.merge({
-          x: select_rect.x + (col * @selected_sprite.w),
-          y: select_rect.y + (row * @selected_sprite.h),
-          w: @selected_sprite.w,
-          h: @selected_sprite.h
+        args.state.tiles << @selected_node.merge({
+          x: select_rect.x + (col * @selected_node.w),
+          y: select_rect.y + (row * @selected_node.h),
+          w: @selected_node.w,
+          h: @selected_node.h
         })
       end
     end
@@ -596,8 +660,6 @@ class MapEditor
         a: 55,
         primitive_marker: :sprite
       }
-      args.outputs.debug << "#{rect}"
-
 
       args.outputs.sprites << rect
       args.outputs.sprites << create_borders(rect, border_width: 2, color: { r: 0, g: 0, b: 0, a: 200 }).values
@@ -767,50 +829,22 @@ class MapEditor
   def combine_sprites(current_sprite, new_sprite)
     hash = {}
 
-    # Find the direction, left / right or up / down
-    # y_range = ((current_sprite.source_y)..(current_sprite.source_y + current_sprite.source_h))
-    # x_range = ((current_sprite.source_x)..(current_sprite.source_x + current_sprite.source_w))
+    hash[:source_x] = [new_sprite.source_x, current_sprite.source_x].min
+    hash[:source_y] = [new_sprite.source_y, current_sprite.source_y].min
 
-    # if is_horizontal
-
-    # end
-
-    if new_sprite.source_y > current_sprite.source_y
-      # @direction = :up
-      hash[:source_y] = current_sprite.source_y
-      hash[:source_h] = (new_sprite.source_y - current_sprite.source_y + new_sprite.source_h)
-    elsif current_sprite.source_y > new_sprite.source_y
-      # @direction = :down
-      hash[:source_y] = current_sprite.source_y - new_sprite.source_h
-      hash[:source_h] = current_sprite.source_h + new_sprite.source_h
-    elsif new_sprite.source_x > current_sprite.source_x
-      # @direction = :right
-      hash[:source_x] = current_sprite.source_x
-      hash[:source_w] = (new_sprite.source_x - current_sprite.source_x + new_sprite.source_w)
-    elsif current_sprite.source_x > new_sprite.source_x
-      # @direction = :left
-      hash[:source_x] = current_sprite.source_x - new_sprite.source_w
-      hash[:source_w] = current_sprite.source_w + new_sprite.source_w
+    if new_sprite.source_x > current_sprite.source_x
+      hash[:source_w] = [current_sprite.source_w, new_sprite.source_x - current_sprite.source_x + new_sprite.source_w].max
+    else
+      hash[:source_w] = current_sprite.source_x - new_sprite.source_x + current_sprite.source_w
     end
 
-    @direction = hash
+    if new_sprite.source_y > current_sprite.source_y
+      hash[:source_h] = [current_sprite.source_h, new_sprite.source_y - current_sprite.source_y + new_sprite.source_h].max
+    else
+      hash[:source_h] = current_sprite.source_y - new_sprite.source_y + current_sprite.source_h
+    end
 
-    # @direction = {
-    #   x1: current_sprite.source_x,
-    #   x2: new_sprite.source_x,
-    #   y1: current_sprite.source_y,
-    #   y2: new_sprite.source_y,
-    #   w1: current_sprite.w,
-    #   w2: new_sprite.source_w,
-    #   h1: current_sprite.h,
-    #   h2: new_sprite.source_h,
-    # }
-    @direction = new_sprite.merge(
-      current_sprite,
-    ).merge(
-      hash
-    )
-
+    current_sprite.merge(new_sprite).merge(hash)
   end
 
   def create_button(args, id:, text:, w: nil, h: nil, border_width: 1,
@@ -917,5 +951,78 @@ class MapEditor
           **color,
         }
       }.each_value { |hash| hash[:primitive_marker] = :sprite }
+  end
+
+  def calc_nodes(args)
+    mouse = args.inputs.mouse
+    state = args.state
+    # If a user has a sprite selected
+    if @current_nodeset && @selected_sprite && mouse.intersect_rect?(@current_nodeset)
+      new_sprite = sprite_to_nodeset_rect(mouse, @selected_sprite, @current_nodeset)
+
+      intersecting_tiles = args.geometry.find_all_intersect_rect(new_sprite, @current_nodeset.tiles)
+
+      if (mouse.click || (mouse.held && mouse.moved))
+        intersecting_tiles.each { |tile| @current_nodeset.tiles.delete(tile) }
+        @current_nodeset.tiles << new_sprite
+      elsif intersecting_tiles.length > 0
+        tile_target = {x: nil, y: nil, w: 0, h: 0, path: :pixel, r: 255, b: 0, g: 0, a: 128, primitive_marker: :sprite}
+
+        intersecting_tiles.each do |tile|
+          if !tile_target.x || tile_target.x < tile.x
+            tile_target.x = tile.x
+          end
+
+          if !tile_target.y || tile_target.y < tile.y
+            tile_target.y = tile.y
+          end
+
+          tile_target.w += tile.w
+          tile_target.h += tile.h
+        end
+
+        sheet_id = "__sheet__#{@current_nodeset.id}"
+
+        # sprite = sprite_to_nodeset_rect(args.inputs.mouse, tile_target, @current_nodeset)
+        sprite = tile_target
+        # sprite.y = @current_nodeset.y + sprite.y
+        # sprite.x = @current_nodeset.x + sprite.x
+
+        args.outputs[sheet_id].sprites << sprite
+        args.outputs[sheet_id].sprites << create_borders(sprite, border_width: 2, color: { r: 0, g: 100, b: 0, a: 255 }).values
+      end
+    elsif @current_nodeset && !@selected_sprite && mouse.intersect_rect?(@current_nodeset)
+      tiles = @current_nodeset.tiles.map do |current_tile|
+        current_tile.merge({
+          x: current_tile.x + @current_nodeset.x,
+          y: current_tile.y + @current_nodeset.y,
+          w: current_tile.w,
+          h: current_tile.h
+        })
+      end
+
+      tile = tiles.find { |tile| mouse.intersect_rect?(tile) }
+
+      @hovered_node = tile
+
+      if @hovered_node
+        args.outputs.sprites << @hovered_node.merge({ path: :pixel, r: 0, b: 255, g: 0, a: 128 })
+      end
+    end
+
+    if @hovered_node && args.inputs.mouse.intersect_rect?(@hovered_node) && args.inputs.mouse.click
+      @selected_node = Camera.to_world_space(args.state.camera, @hovered_node)
+    end
+
+    if @selected_node
+      @selected_node.x = @mouse_world_rect.x
+      @selected_node.y = @mouse_world_rect.y
+
+      scene_nodes = []
+      scene_nodes << (Camera.to_screen_space(state.camera, @selected_node))
+      scene_nodes << (Camera.to_screen_space(state.camera, @selected_node)).merge(path: :pixel, r: 0, g: 125, b: 0, a: 64)
+      args.outputs[:scene].sprites << scene_nodes
+    end
+
   end
 end

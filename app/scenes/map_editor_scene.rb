@@ -47,17 +47,19 @@ class MapEditorScene
       return
     end
 
+    speed = 3 + (3 / args.state.camera.scale)
+
     # Movement
     if inputs.keyboard.left_arrow
-      args.state.camera.target_x -= 3
+      args.state.camera.target_x -= speed
     elsif inputs.keyboard.right_arrow
-      args.state.camera.target_x += 3
+      args.state.camera.target_x += speed
     end
 
     if inputs.keyboard.down_arrow
-      args.state.camera.target_y -= 3
+      args.state.camera.target_y -= speed
     elsif inputs.keyboard.up_arrow
-      args.state.camera.target_y += 3
+      args.state.camera.target_y += speed
     end
 
     # Zoom
