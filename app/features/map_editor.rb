@@ -1,3 +1,4 @@
+require "app/hash_methods.rb"
 require "app/features/camera.rb"
 require "app/tilesheets/loader.rb"
 require "app/json.rb"
@@ -14,6 +15,7 @@ class MapEditor
 
     # @type [Boolean]
     @show_grid = false
+    @grid_border_size = 0
 
     @nodesets_file = ""
 
@@ -44,8 +46,8 @@ class MapEditor
       @nature_spritesheet,
     ]
 
-    @nodesets = [
-    ]
+    @nodesets = load_nodesets
+    # @nodesets = []
 
     if @nodesets.length < 1
       create_nodeset
@@ -82,7 +84,7 @@ class MapEditor
   end
 
   def render_screen_boxes(args)
-    grid_border_size = 2
+    grid_border_size = 1
     width = 1280
     height = 1280
     if Kernel.tick_count == 0
@@ -99,7 +101,7 @@ class MapEditor
     end
 
     if !@show_grid
-      args.outputs[:grid].sprites.clear
+      # args.outputs[:grid].sprites.clear
       return
     end
 
@@ -116,9 +118,11 @@ class MapEditor
         border_size = grid_border_size
       end
 
+      @grid_border_size = border_size
+
       @grid.each do |line|
-        line.w = border_size if line[:line_type] == :vertical
-        line.h = border_size if line[:line_type] == :horizontal
+        line.w = @grid_border_size if line[:line_type] == :vertical
+        line.h = @grid_border_size if line[:line_type] == :horizontal
       end
 
       # Update the grid with new widths.
@@ -246,6 +250,8 @@ class MapEditor
       selected_sprite = @hovered_sprite.merge({})
 
       if mouse.click
+        @selected_node = nil
+
         if @selected_sprite && args.inputs.keyboard.shift
           @selected_sprite = combine_sprites(@selected_sprite, selected_sprite)
         else
@@ -291,7 +297,7 @@ class MapEditor
     elsif @selected_node && (mouse.click || (mouse.held && mouse.moved)) && !mouse.intersect_rect?(@current_spritesheet)
       if @mode == :add
         @should_save = true
-        intersecting_tiles = args.state.geometry.find_all_intersect_rect(@mouse_world_rect, args.state.tiles)
+        intersecting_tiles = args.state.geometry.find_all_intersect_rect(@selected_node, args.state.tiles)
         intersecting_tiles.each { |t| args.state.tiles.delete(t) }
         args.state.tiles << @selected_node.copy
       end
@@ -369,7 +375,6 @@ class MapEditor
 
     scene_sprites = []
 
-
     if @hovered_sprite
       sprites << @hovered_sprite.merge({
                            path: :pixel,
@@ -383,7 +388,19 @@ class MapEditor
       hovered_tile = args.state.tiles.find { |t| t.intersect_rect?(@mouse_world_rect) }
 
       if hovered_tile
-        scene_sprites << (Camera.to_screen_space(state.camera, hovered_tile)).merge(path: :pixel, r: 255, g: 0, b: 0, a: 64)
+        scene_sprites << (Camera.to_screen_space(state.camera, hovered_tile)).merge(path: :pixel, r: 255, g: 0, b: 0, a: 128)
+      end
+    end
+
+    if @mode == :add && @selected_node
+      hovered_tiles = args.state.tiles.select { |t| t.intersect_rect?(@selected_node) }
+
+      if hovered_tiles.length > 0
+        hovered_tiles.each do |hovered_tile|
+          world_hovered_tile = (Camera.to_screen_space(state.camera, hovered_tile)).merge(path: :pixel, r: 255, g: 0, b: 0, a: 128)
+          scene_sprites << world_hovered_tile
+          scene_sprites << create_borders(world_hovered_tile, border_width: 2, color: { r: 255, g: 0, b: 0, a: 255 }).values
+        end
       end
     end
 
@@ -402,11 +419,26 @@ class MapEditor
 
     end
 
+    if @selected_node
+      @selected_node.x = @mouse_world_rect.x
+      @selected_node.y = @mouse_world_rect.y
+
+      selected_node = (Camera.to_screen_space(state.camera, @selected_node))
+      scene_sprites << selected_node
+      selected_node_bg = selected_node.merge({ path: :pixel, r: 0, g: 255, b: 0, a: 20 })
+      scene_sprites << create_borders(selected_node_bg, border_width: 2, color: {
+        r: 0,
+        g: 255,
+        b: 0,
+        a: 255,
+      }).values
+      scene_sprites << selected_node_bg
+    end
+
     # args.outputs.debug << "nodeset tiles: #{@current_nodeset.tiles.length}"
 
     outputs.sprites << [sprites, args.state.buttons]
     outputs[:scene].sprites << scene_sprites
-
   end
 
   def handle_box_select(args)
@@ -552,16 +584,34 @@ class MapEditor
 
     begin
       json = $gtk.parse_json_file("data/tiles.json")
-      tiles = json["tiles"].map do |tile|
-        new_tile = {}
-        tile.keys.each do |k|
-          new_tile[k.to_sym] = tile[k]
-        end
-        new_tile
-      end
+      tiles = json["tiles"].map { |tile| HashMethods.symbolize_keys(tile) }
       args.state.tiles = tiles
     rescue => e
     end
+  end
+
+  def load_nodesets
+    nodesets = []
+    begin
+      json = $gtk.parse_json_file("data/nodesets.json")
+
+      if json
+        nodesets = json["nodesets"].map do |nodeset|
+          nodeset = HashMethods.symbolize_keys(nodeset)
+          nodeset[:tiles] = nodeset[:tiles].map { |tile| HashMethods.symbolize_keys(tile) }
+          nodeset
+        end
+      end
+    rescue => e
+      puts e
+      nodesets = []
+    end
+
+    nodesets
+  end
+
+  def save_nodesets
+    $gtk.write_file("data/nodesets.json", JSON.to_json({ nodesets: @nodesets }))
   end
 
   def render_current_spritesheet(args)
@@ -782,12 +832,6 @@ class MapEditor
     save_nodesets
   end
 
-  def save_nodesets
-  end
-
-  def delete_nodeset
-  end
-
   def next_nodeset
     idx = @selected_nodeset_index + 1
 
@@ -965,6 +1009,7 @@ class MapEditor
       if (mouse.click || (mouse.held && mouse.moved))
         intersecting_tiles.each { |tile| @current_nodeset.tiles.delete(tile) }
         @current_nodeset.tiles << new_sprite
+        save_nodesets
       elsif intersecting_tiles.length > 0
         tile_target = {x: nil, y: nil, w: 0, h: 0, path: :pixel, r: 255, b: 0, g: 0, a: 128, primitive_marker: :sprite}
 
@@ -989,7 +1034,7 @@ class MapEditor
         # sprite.x = @current_nodeset.x + sprite.x
 
         args.outputs[sheet_id].sprites << sprite
-        args.outputs[sheet_id].sprites << create_borders(sprite, border_width: 2, color: { r: 0, g: 100, b: 0, a: 255 }).values
+        args.outputs[sheet_id].sprites << create_borders(sprite, border_width: 2, color: { r: 100, g: 0, b: 0, a: 255 }).values
       end
     elsif @current_nodeset && !@selected_sprite && mouse.intersect_rect?(@current_nodeset)
       tiles = @current_nodeset.tiles.map do |current_tile|
@@ -1006,23 +1051,25 @@ class MapEditor
       @hovered_node = tile
 
       if @hovered_node
-        args.outputs.sprites << @hovered_node.merge({ path: :pixel, r: 0, b: 255, g: 0, a: 128 })
+        highlighted_hovered_node = @hovered_node.merge({ path: :pixel, r: 0, b: 255, g: 0, a: 64 })
+        args.outputs.sprites << highlighted_hovered_node
+        args.outputs.sprites << create_borders(highlighted_hovered_node, border_width: 2, color: {
+          r: 0,
+          g: 0,
+          b: 255,
+          a: 200,
+        }).values
       end
     end
 
     if @hovered_node && args.inputs.mouse.intersect_rect?(@hovered_node) && args.inputs.mouse.click
-      @selected_node = Camera.to_world_space(args.state.camera, @hovered_node)
-    end
+      @selected_node = Camera.to_world_space(args.state.camera, @hovered_node).merge({
+        w: @hovered_node.source_w,
+        h: @hovered_node.source_h,
 
-    if @selected_node
-      @selected_node.x = @mouse_world_rect.x
-      @selected_node.y = @mouse_world_rect.y
-
-      scene_nodes = []
-      scene_nodes << (Camera.to_screen_space(state.camera, @selected_node))
-      scene_nodes << (Camera.to_screen_space(state.camera, @selected_node)).merge(path: :pixel, r: 0, g: 125, b: 0, a: 64)
-      args.outputs[:scene].sprites << scene_nodes
+      })
     end
 
   end
 end
+
