@@ -1,13 +1,13 @@
 {
   "nodesets": [
     {
-      "name": "nodeset__1",
-      "id": "nodeset__1",
+      "name": "nodeset__2",
+      "id": "nodeset__2",
       "type": "nodeset",
-      "h": 192,
-      "w": 352,
-      "x": 20,
-      "y": 508,
+      "source_h": 96,
+      "source_w": 176,
+      "source_x": 20,
+      "source_y": 604,
       "tiles": [
         {
           "tilemap_name": "objects",
@@ -19,52 +19,18 @@
           "path": "sprites/sproutlands/objects/basic_grass_biome_things.png",
           "animation_duration": null,
           "animation_frames": null,
-          "x": 288,
+          "x": 144,
           "y": 0,
-          "h": 64,
-          "w": 64
-        },
-        {
-          "tilemap_name": "objects",
-          "tile_name": "objects__005",
-          "source_x": 80,
-          "source_y": 16,
-          "source_h": 16,
-          "source_w": 16,
-          "path": "sprites/sproutlands/objects/basic_grass_biome_things.png",
-          "animation_duration": null,
-          "animation_frames": null,
-          "x": 192,
-          "y": 32,
           "h": 32,
           "w": 32
         }
-      ]
-    },
-    {
-      "name": "nodeset__2",
-      "id": "nodeset__2",
-      "type": "nodeset",
-      "h": 192,
-      "w": 352,
+      ],
       "x": 20,
       "y": 508,
-      "tiles": [
-        {
-          "tilemap_name": "objects",
-          "tile_name": "objects__005",
-          "source_x": 80,
-          "source_y": 16,
-          "source_h": 16,
-          "source_w": 16,
-          "path": "sprites/sproutlands/objects/basic_grass_biome_things.png",
-          "animation_duration": null,
-          "animation_frames": null,
-          "x": 320,
-          "y": 0,
-          "h": 32,
-          "w": 32
-        }
+      "h": 192,
+      "w": 352,
+      "scaled_tiles": [
+
       ]
     }
   ]

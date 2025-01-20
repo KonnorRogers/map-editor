@@ -3,7 +3,7 @@ require "app/scenes/map_editor_scene.rb"
 TILE_SIZE = 16
 
 def tick(args)
-  args.outputs.debug << "FPS: #{args.gtk.current_framerate}"
+  args.outputs.debug << "Simulation FPS: #{args.gtk.current_framerate_calc.round.to_s}"
   args.state.tile_size ||= TILE_SIZE
 
   args.state.scenes ||= {

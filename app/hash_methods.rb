@@ -5,6 +5,8 @@ module HashMethods
     h = hash.map do |k,v|
       v_str = if v.instance_of? Hash
                 self.stringify_keys(v)
+              elsif v.instance_of? Array
+                v.map { |item| self.stringify_keys(item) }
               else
                 v
               end
@@ -19,6 +21,8 @@ module HashMethods
     h = hash.map do |k,v|
       v_sym = if v.instance_of? Hash
                 self.symbolize_keys(v)
+              elsif v.instance_of? Array
+                v.map { |item| self.symbolize_keys(item) }
               else
                 v
               end

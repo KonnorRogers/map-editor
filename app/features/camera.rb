@@ -39,5 +39,9 @@ class Camera
     def find_all_intersect_viewport camera, os
       Geometry.find_all_intersect_rect viewport_world(camera), os
     end
+
+    def intersect_viewport?(camera, rect)
+      viewport_world(camera).intersect_rect?(rect)
+    end
   end
 end

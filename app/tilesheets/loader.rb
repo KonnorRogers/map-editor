@@ -42,6 +42,8 @@ module Tilesheets
         columns: columns,
         rows: rows,
         path: path,
+        file_width: file_width,
+        file_height: file_height,
         w: file_width,
         h: file_height,
       }

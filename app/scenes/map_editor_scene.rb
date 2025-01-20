@@ -7,8 +7,6 @@ class MapEditorScene
   end
 
   def tick(args)
-    @map_editor.load_tiles(args)
-
     calc_camera(args)
     move_camera(args)
 
@@ -17,17 +15,11 @@ class MapEditorScene
     args.outputs[:scene].w = 1500
     args.outputs[:scene].h = 1500
 
-    state = args.state
-    tiles_to_render = Camera.find_all_intersect_viewport(state.camera, state.tiles)
-    args.outputs[:scene].sprites << tiles_to_render.map do |m|
-      Camera.to_screen_space(state.camera, m)
-    end
-
     @map_editor.tick(args)
 
     # Starting map editor box.
     start_scale = args.state.start_camera.scale
-    args.outputs[:scene].borders << Camera.to_screen_space(state.camera, {
+    args.outputs[:scene].borders << Camera.to_screen_space(args.state.camera, {
       x: (Camera::SCREEN_WIDTH / -2) / start_scale,
       y: (Camera::SCREEN_HEIGHT / -2) / start_scale,
       w: Camera::SCREEN_WIDTH / start_scale,
