@@ -566,7 +566,7 @@ class MapEditor
     end
 
     if @selected_sprite
-      sheet_id = "__sheet__#{@current_nodeset.id}"
+      sheet_id = @current_nodeset.id.to_sym
 
       if args.inputs.mouse.intersect_rect?(@current_nodeset)
         sprite = sprite_to_nodeset_rect(args.inputs.mouse, @selected_sprite, @current_nodeset)
@@ -803,7 +803,7 @@ class MapEditor
   end
 
   def render_sheet(sheet, args)
-    sheet_id = "__sheet__#{sheet.id}".to_sym
+    sheet_id = sheet.id.to_sym
     args.outputs[sheet_id].w = sheet.source_w
     args.outputs[sheet_id].h = sheet.source_h
 
@@ -848,8 +848,7 @@ class MapEditor
     }
 
     hovered_nodes = []
-    if @hovered_node
-      # args.outputs.debug << "#{@hovered_node}"
+    if @hovered_node && @view == :map
       highlighted_hovered_node = @hovered_node.merge({ path: :pixel, r: 0, b: 255, g: 0, a: 64 })
       hovered_nodes << highlighted_hovered_node
       hovered_nodes.concat(@primitives.create_borders(highlighted_hovered_node, border_width: 2, color: {
@@ -945,7 +944,7 @@ class MapEditor
     w = columns * TILE_SIZE
     @nodesets << scale_nodeset({
       name: "nodeset__#{@nodesets.length + 1}",
-      id: "nodeset__#{@nodesets.length + 1}",
+      id: $gtk.create_uuid,
       type: :nodeset,
       source_h: h,
       source_w: w,
@@ -1043,6 +1042,7 @@ class MapEditor
       if (mouse.click || (mouse.held && mouse.moved))
         intersecting_tiles.each { |tile| @current_nodeset.tiles.delete(tile) }
         @current_nodeset.tiles << new_sprite
+        scale_nodeset(@current_nodeset)
         save_nodesets
       elsif intersecting_tiles.length > 0
         tile_target = {x: nil, y: nil, w: 0, h: 0, path: :pixel, r: 255, b: 0, g: 0, a: 128, primitive_marker: :sprite}
@@ -1060,7 +1060,7 @@ class MapEditor
           tile_target.h += tile.h
         end
 
-        sheet_id = "__sheet__#{@current_nodeset.id}"
+        sheet_id = @current_nodeset.id.to_sym
 
         # sprite = sprite_to_nodeset_rect(args.inputs.mouse, tile_target, @current_nodeset)
         sprite = tile_target
@@ -1081,7 +1081,7 @@ class MapEditor
     end
 
     mouse = args.inputs.mouse
-    if @hovered_node && mouse.intersect_rect?(@hovered_node) && mouse.click
+    if @hovered_node && mouse.intersect_rect?(@hovered_node) && mouse.click && @view == :map
       @selected_node = Camera.to_world_space(args.state.camera, @hovered_node).merge({
         w: @hovered_node.source_w,
         h: @hovered_node.source_h,
