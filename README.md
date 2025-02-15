@@ -9,7 +9,7 @@ TODO:
 - [ ] - Layers
 - [ ] - Auto-create nodeset
 - [ ] - Allow dropping spritesheets
-- [ ] - Tabs for Nodes, Tiles, Objects
+- [ ] - Tabs for Tiles, Entities
 
 JSON Schema:
 
@@ -38,7 +38,7 @@ Node = {
 
 Layer = {
     name: string
-    nodes: Node[]
+    nodes: (Tile | Entity)[]
 }
 
 Chunk = {
