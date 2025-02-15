@@ -1,4 +1,4 @@
-module DesignSystem
+module UI
   class DemoScene
     def tick(args)
 

@@ -3,7 +3,7 @@ require "app/features/camera.rb"
 require "app/tilesheets/loader.rb"
 require "app/json.rb"
 require "app/features/primitives.rb"
-require "app/features/design_system/semantic_palette.rb"
+require "app/features/ui/semantic_palette.rb"
 
 class ::Array
   original_concat = instance_method(:concat)
@@ -23,7 +23,7 @@ class MapEditor
 
   def initialize
     @primitives = Primitives.new
-    @palette = DesignSystem::SemanticPalette.new
+    @palette = UI::SemanticPalette.new
 
     # @type [:add, :select, :remove]
     @mode = :add
@@ -68,7 +68,6 @@ class MapEditor
     ]
 
     @nodesets = load_nodesets
-    # @nodesets = []
 
     if @nodesets.length < 1
       create_nodeset
@@ -186,6 +185,9 @@ class MapEditor
     handle_spritesheet_buttons(args)
     switch_mode(args)
     transition_view(args)
+
+    args.outputs.debug << "#{@selected_node}"
+    args.outputs.debug << "#{@select_rect}"
   end
 
   def transition_view(args)
@@ -193,8 +195,8 @@ class MapEditor
       @view = @next_view
       @next_view = nil
       @selected_sprite = nil
-      @selected_node = nil
-      @select_rect = nil
+      # @selected_node = nil
+      # @select_rect = nil
       args.state.camera.x = 0
       args.state.camera.target_x = 0
       args.state.camera.y = 0
@@ -409,7 +411,7 @@ class MapEditor
 
       if mouse.click
         # Clear any selected nodes
-        @selected_node = nil
+        # @selected_node = nil
 
         if @selected_sprite && args.inputs.keyboard.shift
           sprite = combine_sprites(@selected_sprite, selected_sprite)
@@ -460,7 +462,7 @@ class MapEditor
       @should_save = true
       intersecting_tiles = Geometry.find_all_intersect_rect(@mouse_world_rect, args.state.layers[@current_layer].tiles)
       intersecting_tiles.each { |t| args.state.layers[@current_layer].tiles.delete(t) }
-    elsif @mode == :select
+    elsif @mode == :select || @mode == :add
       handle_box_select(args)
     # TODO: Change to "@selected_node"
     elsif @selected_node && (mouse.click || (mouse.held && mouse.moved))
@@ -499,12 +501,14 @@ class MapEditor
     end
 
     if args.inputs.keyboard.s
+      reset_select
       @mode = :select
       @selected_sprite = nil
       @selected_node = nil
     end
 
     if args.inputs.keyboard.a
+      reset_select
       @mode = :add
     end
 
@@ -517,9 +521,8 @@ class MapEditor
     end
 
     if args.inputs.keyboard.key_down.escape
-      @selected_sprite = nil
-      @selected_node = nil
-      @select_rect = nil
+      reset_select
+      @mode = :add
     end
   end
 
@@ -600,17 +603,24 @@ class MapEditor
     outputs[:scene].sprites << scene_sprites
   end
 
+  def reset_select
+    @start_y = nil
+    @start_x = nil
+    @end_y = nil
+    @end_x = nil
+    # @select_rect = nil
+  end
+
   def handle_box_select(args)
-    reset = proc {
-      @start_y = nil
-      @start_x = nil
-      @end_y = nil
-      @end_x = nil
-      @select_rect = nil
-    }
+    if @mode == :add && args.inputs.mouse.click
+      fill_tiles(args)
+      save_tiles(args)
+      reset_select
+      return
+    end
 
     if @mode != :select
-      reset.call
+      reset_select
       return
     end
 
@@ -619,13 +629,9 @@ class MapEditor
     if args.inputs.keyboard.key_down.backspace || args.inputs.keyboard.key_down.delete || args.inputs.keyboard.key_down.x
       remove_tiles(args)
       save_tiles(args)
-      reset.call
-    end
-
-    if mouse.click
-      fill_tiles(args)
-      save_tiles(args)
-      reset.call
+      @mode = :remove
+      reset_select
+      return
     end
 
     if (mouse.click || (mouse.held && mouse.moved))
@@ -677,6 +683,7 @@ class MapEditor
       alpha = 150
     end
 
+    args.outputs.debug << @select_rect.to_s
 
     @select_rect = {
       h: h,
@@ -685,12 +692,11 @@ class MapEditor
       y: y,
     }
 
-    args.outputs.borders << @select_rect.merge({
-      r: 0,
-      g: 0,
-      b: 255,
+    args.outputs.sprites << @select_rect.merge({
+      r: 100,
+      g: 100,
+      b: 100,
       a: alpha,
-      primitive_marker: :border
     })
   end
 

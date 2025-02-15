@@ -1,6 +1,6 @@
-require "app/features/design_system/color.rb"
+require "app/features/ui/color.rb"
 
-module DesignSystem
+module UI
   class StaticPalette
     attr_accessor :colors
 
@@ -125,10 +125,10 @@ module DesignSystem
       @colors.transform_values! do |str_or_hash|
         if str_or_hash.is_a?(String)
           str = str_or_hash
-          DesignSystem::Color.hex_to_rgba(str)
+          UI::Color.hex_to_rgba(str)
         elsif str_or_hash.is_a?(Hash)
           hash = str_or_hash
-          hash.transform_values! { |hex_code| DesignSystem::Color.hex_to_rgba(hex_code) }
+          hash.transform_values! { |hex_code| UI::Color.hex_to_rgba(hex_code) }
         end
       end
     end

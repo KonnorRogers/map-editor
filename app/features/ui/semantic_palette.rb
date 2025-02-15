@@ -1,4 +1,4 @@
-require "app/features/design_system/static_palette.rb"
+require "app/features/ui/static_palette.rb"
 
 class ::Integer
   def to_sym
@@ -6,11 +6,11 @@ class ::Integer
   end
 end
 
-module DesignSystem
+module UI
   class SemanticPalette
     attr_accessor :colors
 
-    def initialize(static_colors = DesignSystem::StaticPalette.new.colors)
+    def initialize(static_colors = UI::StaticPalette.new.colors)
       @colors = {
         black: static_colors.black,
         white: static_colors.white,

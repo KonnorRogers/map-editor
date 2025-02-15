@@ -1,7 +1,7 @@
-module DesignSystem
+module UI
   module Color
     # Usage
-    # DesignSystem::Color.from("#fff")
+    # UI::Color.from("#fff")
     # => { r: 255, g: 255, b: 255, a: 255 }
     def self.hex_to_rgba(str_int, order = 432)
       if String === str_int
