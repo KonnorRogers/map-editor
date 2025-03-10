@@ -1,15 +1,21 @@
-TODO:
+In progress:
+- [ ] - Show icon for editing layer name
+- [ ] - Add input for editing layer name
+- [ ] - Add icon for removing layer
+- [ ] - Add icon for showing layer
+
+ROADMAP:
 
 - [x] - Save nodesets to file
 - [ ] - Editable nodes
 - [x] - Fix tile saving check for intersection
-- [ ] - Animations??
-- [ ] - ????
 - [ ] - Extracting chunks
 - [ ] - Layers
-- [ ] - Auto-create nodeset
 - [ ] - Allow dropping spritesheets
 - [ ] - Tabs for Tiles, Entities
+- [ ] - Fix dragging tiles that are bigger than 16x16 deleting itself
+- [ ] - Support drag and drop files via `file_drop` event
+- [ ] - Edit nodeset names
 
 JSON Schema:
 
@@ -39,6 +45,7 @@ Node = {
 Layer = {
     name: string
     nodes: (Tile | Entity)[]
+    visible: boolean
 }
 
 Chunk = {

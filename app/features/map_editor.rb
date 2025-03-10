@@ -87,7 +87,7 @@ class MapEditor
     state = args.state
 
     tiles = []
-    state.layers.each do |layer|
+    @layers.each do |layer|
       tiles_to_render = Camera.find_all_intersect_viewport(state.camera, layer.tiles)
       tiles.concat(tiles_to_render.map { |m| Camera.to_screen_space(state.camera, m) })
     end
@@ -172,8 +172,10 @@ class MapEditor
 
     args.outputs.debug << @view.to_s
     args.outputs.debug << @mode.to_s
+    args.outputs.debug << @active_tab
 
     render_menu(args)
+    render_active_tab(args)
     render_pixel_grid(args)
     render_tiles(args)
     render_sprite_canvas(args)
@@ -195,8 +197,8 @@ class MapEditor
       @view = @next_view
       @next_view = nil
       @selected_sprite = nil
-      # @selected_node = nil
-      # @select_rect = nil
+      @selected_node = nil
+      @select_rect = nil
       args.state.camera.x = 0
       args.state.camera.target_x = 0
       args.state.camera.y = 0
@@ -204,6 +206,45 @@ class MapEditor
     end
   end
 
+  def render_active_tab(args)
+    if @active_tab == :layer
+      render_layer_tab(args)
+      return
+    end
+  end
+
+  def render_layer_tab(args)
+    sprites = []
+    labels = []
+
+    x_padding = 24
+    y_padding = 24
+    @layers.each_with_index do |layer, index|
+      w, h = $gtk.calcstringbox(layer.name)
+      container = {
+        x: 20,
+        y: 200 - index,
+        h: h + y_padding,
+        w: 380,
+        path: :pixel,
+        **@palette.colors.dig(:neutral, :fill, :loud)
+      }
+
+      label = {
+        x: container.x + x_padding.div(2),
+        y: container.y + container.h - y_padding.div(2),
+        text: layer.name,
+        primitive_marker: :label,
+        **@palette.colors.dig(:neutral, :on, :loud)
+      }
+
+      sprites << container
+      labels << label
+    end
+
+    args.outputs[:editor_menu].sprites.concat(sprites)
+    args.outputs[:editor_menu].labels.concat(labels)
+  end
 
   def render_menu(args)
     render_target = :editor_menu
@@ -234,14 +275,23 @@ class MapEditor
       y: @spritesheet_menu_button.y,
     })
 
-    buttons = [@spritesheet_menu_button, @map_menu_button]
+    @layer_menu_button = @primitives.create_button(args,
+      id: :layer_menu_button,
+      text: "Layers",
+      background: @palette.colors.dig(:neutral, :fill, :loud),
+      text_color: @palette.colors.dig(:neutral, :on, :loud),
+    ).merge({
+      x: @spritesheet_menu_button.x,
+      y: @spritesheet_menu_button.y - @spritesheet_menu_button.h - 10,
+    })
+
+    buttons = [@map_menu_button, @spritesheet_menu_button, @layer_menu_button]
 
     Geometry.find_all_intersect_rect(args.inputs.mouse, buttons).each do |button|
       button.merge!({
         **@palette.colors.dig(:neutral, :fill, :normal)
       })
     end
-
 
     args.state.buttons.concat(buttons)
 
@@ -255,7 +305,11 @@ class MapEditor
       @next_view = :map
     end
 
-    args.outputs[render_target].sprites << [@spritesheet_menu_button, @map_menu_button]
+    if mouse.click && mouse.intersect_rect?(@layer_menu_button)
+      @active_tab = :layer
+    end
+
+    args.outputs[render_target].sprites << buttons
     @menu = {x: 0, y: 0, w: menu.w, h: menu.h, path: render_target}
     args.outputs.sprites << @menu
   end
@@ -411,7 +465,7 @@ class MapEditor
 
       if mouse.click
         # Clear any selected nodes
-        # @selected_node = nil
+        @selected_node = nil
 
         if @selected_sprite && args.inputs.keyboard.shift
           sprite = combine_sprites(@selected_sprite, selected_sprite)
@@ -460,17 +514,17 @@ class MapEditor
 
     if @mode == :remove && (mouse.click || (mouse.held && mouse.moved))
       @should_save = true
-      intersecting_tiles = Geometry.find_all_intersect_rect(@mouse_world_rect, args.state.layers[@current_layer].tiles)
-      intersecting_tiles.each { |t| args.state.layers[@current_layer].tiles.delete(t) }
-    elsif @mode == :select || @mode == :add
+      intersecting_tiles = Geometry.find_all_intersect_rect(@mouse_world_rect, @layers[@current_layer].tiles)
+      intersecting_tiles.each { |t| @layers[@current_layer].tiles.delete(t) }
+    elsif @mode == :select
       handle_box_select(args)
     # TODO: Change to "@selected_node"
     elsif @selected_node && (mouse.click || (mouse.held && mouse.moved))
       if @mode == :add
         @should_save = true
-        intersecting_tiles = args.state.geometry.find_all_intersect_rect(@selected_node, args.state.layers[@current_layer].tiles)
-        intersecting_tiles.each { |t| args.state.layers[@current_layer].tiles.delete(t) }
-        args.state.layers[@current_layer].tiles << @selected_node.copy
+        intersecting_tiles = args.state.geometry.find_all_intersect_rect(@selected_node, @layers[@current_layer].tiles)
+        intersecting_tiles.each { |t| @layers[@current_layer].tiles.delete(t) }
+        @layers[@current_layer].tiles << @selected_node.copy
       end
     end
 
@@ -522,6 +576,8 @@ class MapEditor
 
     if args.inputs.keyboard.key_down.escape
       reset_select
+      @selected_node = nil
+      @selected_sprite = nil
       @mode = :add
     end
   end
@@ -536,7 +592,7 @@ class MapEditor
     scene_sprites = []
 
     if @mode == :remove
-      hovered_tile = args.state.layers[@current_layer].tiles.find { |t| t.intersect_rect?(@mouse_world_rect) }
+      hovered_tile = @layers[@current_layer].tiles.find { |t| t.intersect_rect?(@mouse_world_rect) }
 
       if hovered_tile
         alpha_channel = (Camera.to_screen_space(state.camera, hovered_tile)).merge(path: :pixel, r: 255, g: 0, b: 0, a: 128)
@@ -547,7 +603,7 @@ class MapEditor
     end
 
     if @mode == :add && @selected_node
-      hovered_tiles = args.state.layers[@current_layer].tiles.select { |t| t.intersect_rect?(@selected_node) }
+      hovered_tiles = @layers[@current_layer].tiles.select { |t| t.intersect_rect?(@selected_node) }
 
       if hovered_tiles.length > 0
         hovered_tiles.each do |hovered_tile|
@@ -608,13 +664,14 @@ class MapEditor
     @start_x = nil
     @end_y = nil
     @end_x = nil
-    # @select_rect = nil
+    @select_rect = nil
   end
 
   def handle_box_select(args)
-    if @mode == :add && args.inputs.mouse.click
+    if @select_rect && args.inputs.mouse.click
       fill_tiles(args)
       save_tiles(args)
+      @mode = :add
       reset_select
       return
     end
@@ -710,7 +767,7 @@ class MapEditor
 
   def remove_tiles(args, select_rect = nil)
     selection = select_rect || select_rect_to_tiles(args)
-    args.state.layers[@current_layer].tiles.reject! { |t| t.intersect_rect? selection }
+    @layers[@current_layer].tiles.reject! { |t| t.intersect_rect? selection }
   end
 
   def fill_tiles(args)
@@ -725,7 +782,7 @@ class MapEditor
 
     columns.times do |col|
       rows.times do |row|
-        args.state.layers[@current_layer].tiles << @selected_node.merge({
+        @layers[@current_layer].tiles << @selected_node.merge({
           x: select_rect.x + (col * @selected_node.w),
           y: select_rect.y + (row * @selected_node.h),
           w: @selected_node.w,
@@ -737,36 +794,47 @@ class MapEditor
 
   def save_tiles(args)
     contents = JSON.to_json({
-      layers: args.state.layers
+      layers: @layers
     })
     $gtk.write_file("data/layers.json", contents)
   end
 
   def load_layers(args)
-    return if args.state.layers
+    return if @layers
 
-    args.state.layers = []
+    @layers = []
 
     begin
       json = $gtk.parse_json_file("data/layers.json")
       layers = json["layers"].map do |layer|
         HashMethods.symbolize_keys(layer)
       end
-      args.state.layers = layers
+      @layers = layers
+      @layers.each_with_index do |layer, index|
+        layer.name = "Layer #{index + 1}" if !layer.name
+      end
     rescue => e
     end
 
-    if args.state.layers.length <= 0
-      add_layer(args.state.layers)
+    if @layers.length <= 0
+      add_layer
     end
 
-    @current_layer = args.state.layers.length - 1
+    @current_layer = @layers.length - 1
   end
 
-  def add_layer(layers)
-    layers << {
-      tiles: []
-    }
+  def add_layer(layer = {})
+    id = SecureRandom.uuid
+
+    if !layer.name
+      layer.name = "Layer #{@layers.length + 1}"
+    end
+
+    @layers.unshift({
+      id: layer.id || id,
+      name: layer.name,
+      tiles: layer.tiles
+    })
   end
 
   def scale_nodeset(nodeset)
@@ -1092,7 +1160,6 @@ class MapEditor
         w: @hovered_node.source_w,
         h: @hovered_node.source_h,
       })
-      @mode = :add
     end
   end
 end
